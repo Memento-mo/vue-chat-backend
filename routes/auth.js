@@ -1,18 +1,17 @@
-const firebase = require('firebase')
+const jwt = require('jsonwebtoken')
+const randToken = require('rand-token')
 
+const firebase = require('firebase')
 const db = firebase.firestore()
 const users = db.collection('users')
 const refreshTokens = db.collection('refreshTokens')
-const jwt = require('jsonwebtoken')
-const randToken = require('rand-token')
+const chats = db.collection('chats')
 
 const bcrypt = require('bcrypt')
 const saltRounds = 10
 
-const { authenticateToken } = require('../utils/auth')
-
 function generateAccessToken(user) {
-  return jwt.sign(user, process.env.TOKEN_SECRET, { expiresIn: '100s' })
+  return jwt.sign(user, process.env.TOKEN_SECRET, { expiresIn: '10000s' })
 }
 
 function generateRefreshToken() {
@@ -48,7 +47,7 @@ module.exports = app => {
         doc.forEach(data => infoUser = data.data())
       })
 
-      const token = generateAccessToken({ login: infoUser.login, email: infoUser.email, firstName: infoUser.firstName, lastName: infoUser.lastName })
+      const token = generateAccessToken({ login: infoUser.login, email: infoUser.email, firstName: infoUser.firstName, lastName: infoUser.lastName, id: infoUser.id })
 
       await user.get().then(doc => {
         doc.forEach(data => data.ref.update({ token }))
@@ -95,24 +94,35 @@ module.exports = app => {
           return res.status(400).send({ message: 'Username or email already exists' })
         }
 
-        const token = generateAccessToken({ login, email, firstName, lastName })
+        const id = randToken.uid(256)
+        const token = generateAccessToken({ login, email, firstName, lastName, id })
         const refreshToken = generateRefreshToken()
        
         await setRefreshToken(refreshToken, login)
 
         bcrypt.genSalt(saltRounds, (err, salt) => {
           bcrypt.hash(password, salt, (err, hash) => {
-            users.add({
+            const promises = []
+
+            promises.push(users.add({
               login,
               hash,
               email,
               firstName,
               lastName,
-              token
-            })
-            .then(() => {
-              res.status(201).send({ token, refreshToken })
-            })
+              token,
+              id
+            }))
+            
+            promises.push(chats.add({
+              id,
+              chats: []
+            }))
+
+            Promise.all(promises)
+              .then(() => {
+                res.status(201).send({ token, refreshToken })
+              })  
           })
         })
 

@@ -27,6 +27,8 @@ app.use((req, res, next) => {
 })
 
 require('./routes/auth.js')(app)
+require('./routes/chats.js')(app)
+require('./routes/profile.js')(app)
 
 app.listen(9000, () => {
   console.log('The server is running')
